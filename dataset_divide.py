@@ -1,0 +1,49 @@
+# 将原始数据集进行划分成训练集、验证集和测试集
+# 按照8:1:1的比例
+import datetime
+import os
+import glob
+import random
+import shutil
+
+dataset_dir = './original_eye_divide_dataset/'
+train_dir = './eye_segmentation_dataset/train/'
+valid_dir = './eye_segmentation_dataset/valid/'
+test_dir = './eye_segmentation_dataset/val/'
+
+train_per = 0.8
+valid_per = 0.1
+test_per = 0.1
+
+
+def makedir(new_dir):
+    if not os.path.exists(new_dir):
+        os.makedirs(new_dir)
+
+
+if __name__ == '__main__':
+
+    for root, dirs, files in os.walk(dataset_dir):
+        for sDir in dirs:
+			#获取指定目录下的所有图片
+            imgs_list = glob.glob(os.path.join(root, sDir)+'/*.jpg')
+            random.seed(random.seed(datetime.datetime.now()))
+            random.shuffle(imgs_list)
+            imgs_num = len(imgs_list)
+
+            train_point = int(imgs_num * train_per)
+            valid_point = int(imgs_num * (train_per + valid_per))
+
+            for i in range(imgs_num):
+                if i < train_point:
+                    out_dir = train_dir + sDir + '/'
+                elif i < valid_point:
+                    out_dir = valid_dir + sDir + '/'
+                else:
+                    out_dir = test_dir + sDir + '/'
+
+                makedir(out_dir)
+                out_path = out_dir + os.path.split(imgs_list[i])[-1]
+                shutil.copy(imgs_list[i], out_path)
+
+            print('Class:{}, train:{}, valid:{}, test:{}'.format(sDir, train_point, valid_point-train_point, imgs_num-valid_point))

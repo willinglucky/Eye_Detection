@@ -1,64 +1,145 @@
+from __future__ import print_function, division
+
 import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.optim import lr_scheduler
 from torch.autograd import Variable
-import torch.nn.functional as F
-import matplotlib.pyplot as plt
+import torchvision
+from torchvision import datasets, models, transforms
+import time
+import os
+#整体归一化
+# normMean = [0.57458663, 0.5311794, 0.53112286]
+# normStd = [0.28226474, 0.27916232, 0.278306]
+# transforms.Normalize(normMean = [0.57458663, 0.5311794, 0.53112286], normStd = [0.28226474, 0.27916232, 0.278306])
+# 眼部归一化
+# normMean = [0.60297036, 0.5137168, 0.50260335]
+# normStd = [0.24658357, 0.24121241, 0.24273053]
+# transforms.Normalize(normMean = [0.60297036, 0.5137168, 0.50260335], normStd = [0.24658357, 0.24121241, 0.24273053])
+def train_model(model, criterion, optimizer, scheduler, num_epochs=25):
+    since = time.time()
 
-# 生成数据
-# 分别生成2组各100个数据点，增加正态噪声，后标记以y0=0 y1=1两类标签，最后cat连接到一起
-n_data = torch.ones(100, 2)
-# torch.normal(means, std=1.0, out=None)
-x0 = torch.normal(2 * n_data, 1)  # 以tensor的形式给出输出tensor各元素的均值，共享标准差
-y0 = torch.zeros(100)
-x1 = torch.normal(-2 * n_data, 1)
-y1 = torch.ones(100)
+    best_model_wts = model.state_dict()
+    best_acc = 0.0
 
-x = torch.cat((x0, x1), 0).type(torch.FloatTensor)  # 组装（连接）
-y = torch.cat((y0, y1), 0).type(torch.LongTensor)
+    for epoch in range(num_epochs):
+        print('Epoch {}/{}'.format(epoch, num_epochs - 1))
+        print('-' * 10)
 
-# 置入Variable中
-x, y = Variable(x), Variable(y)
+        # Each epoch has a training and validation phase
+        for phase in ['train', 'test']:
+            if phase == 'train':
+                scheduler.step()
+                model.train(True)  # Set model to training mode
+            else:
+                model.train(False)  # Set model to evaluate mode
 
+            running_loss = 0.0
+            running_corrects = 0.0
 
-class Net(torch.nn.Module):
-    def __init__(self, n_feature, n_hidden, n_output):
-        super(Net, self).__init__()
-        self.hidden = torch.nn.Linear(n_feature, n_hidden)
-        self.out = torch.nn.Linear(n_hidden, n_output)
+            # Iterate over data.
+            for data in dataloders[phase]:
+                # get the inputs
+                inputs, labels = data
 
-    def forward(self, x):
-        x = F.relu(self.hidden(x))
-        x = self.out(x)
-        return x
+                # wrap them in Variable
+                if use_gpu:
+                    inputs = Variable(inputs.cuda())
+                    labels = Variable(labels.cuda())
+                else:
+                    inputs, labels = Variable(inputs), Variable(labels)
 
+                # zero the parameter gradients
+                optimizer.zero_grad()
 
-net = Net(n_feature=2, n_hidden=10, n_output=2)
-print(net)
+                # forward
+                outputs = model(inputs)
+                _, preds = torch.max(outputs.data, 1)
+                loss = criterion(outputs, labels)
 
-optimizer = torch.optim.SGD(net.parameters(), lr=0.012)
-loss_func = torch.nn.CrossEntropyLoss()
+                # backward + optimize only if in training phase
+                if phase == 'train':
+                    loss.backward()
+                    optimizer.step()
 
-plt.ion()
-plt.show()
+                # statistics
+                running_loss += loss.data[0]
+                running_corrects += torch.sum(preds == labels.data).to(torch.float32)
 
-for t in range(100):
-    out = net(x)
-    loss = loss_func(out, y)  # loss是定义为神经网络的输出与样本标签y的差别，故取softmax前的值
+            epoch_loss = running_loss / dataset_sizes[phase]
+            epoch_acc = running_corrects / dataset_sizes[phase]
 
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+            print('{} Loss: {:.4f} Acc: {:.4f}'.format(
+                phase, epoch_loss, epoch_acc))
 
-    if t % 2 == 0:
-        plt.cla()
-        # 过了一道 softmax 的激励函数后的最大概率才是预测值
-        # torch.max既返回某个维度上的最大值，同时返回该最大值的索引值
-        prediction = torch.max(F.softmax(out), 1)[1]  # 在第1维度取最大值并返回索引值
-        pred_y = prediction.data.numpy().squeeze()
-        target_y = y.data.numpy()
-        plt.scatter(x.data.numpy()[:, 0], x.data.numpy()[:, 1], c=pred_y, s=100, lw=0, cmap='RdYlGn')
-        accuracy = sum(pred_y == target_y) / 200  # 预测中有多少和真实值一样
-        plt.text(1.5, -4, 'Accu=%.2f' % accuracy, fontdict={'size': 20, 'color': 'red'})
-        plt.pause(0.1)
+            # deep copy the model
+            if phase == 'test' and epoch_acc > best_acc:
+                best_acc = epoch_acc
+                best_model_wts = model.state_dict()
 
-plt.ioff()
-plt.show()
+    time_elapsed = time.time() - since
+    print('Training complete in {:.0f}m {:.0f}s'.format(
+        time_elapsed // 60, time_elapsed % 60))
+    print('Best test Acc: {:4f}'.format(best_acc))
+
+    # load best model weights
+    model.load_state_dict(best_model_wts)
+    return model
+
+if __name__ == '__main__':
+
+    # data_transform, pay attention that the input of Normalize() is Tensor and the input of RandomResizedCrop() or RandomHorizontalFlip() is PIL Image
+    data_transforms = {
+        'train': transforms.Compose([
+            transforms.RandomSizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ]),
+        'test': transforms.Compose([
+            transforms.Scale(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        ]),
+    }
+
+    # your image data file
+    data_dir = '/data'
+    image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
+                                              data_transforms[x]) for x in ['train', 'test']}
+    # wrap your data and label into Tensor
+    dataloders = {x: torch.utils.data.DataLoader(image_datasets[x],
+                                                 batch_size=4,
+                                                 shuffle=True,
+                                                 num_workers=4) for x in ['train', 'test']}
+
+    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'test']}
+
+    # use gpu or not
+    use_gpu = torch.cuda.is_available()
+
+    # get model and replace the original fc layer with your fc layer
+    model_ft = models.resnet18(pretrained=True)
+    num_ftrs = model_ft.fc.in_features
+    model_ft.fc = nn.Linear(num_ftrs, 2)
+
+    if use_gpu:
+        model_ft = model_ft.cuda()
+
+    # define loss function
+    criterion = nn.CrossEntropyLoss()
+
+    # Observe that all parameters are being optimized
+    optimizer_ft = optim.SGD(model_ft.parameters(), lr=0.001, momentum=0.9)
+
+    # Decay LR by a factor of 0.1 every 7 epochs
+    exp_lr_scheduler = lr_scheduler.StepLR(optimizer_ft, step_size=7, gamma=0.1)
+
+    model_ft = train_model(model=model_ft,
+                           criterion=criterion,
+                           optimizer=optimizer_ft,
+                           scheduler=exp_lr_scheduler,
+                           num_epochs=25)
+    torch.save(model_ft.state_dict(), './params.pth')
