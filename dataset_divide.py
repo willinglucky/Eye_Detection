@@ -9,7 +9,7 @@ import shutil
 dataset_dir = './original_eye_divide_dataset/'
 train_dir = './eye_segmentation_dataset/train/'
 valid_dir = './eye_segmentation_dataset/valid/'
-test_dir = './eye_segmentation_dataset/val/'
+test_dir = './eye_segmentation_dataset/test/'
 
 train_per = 0.8
 valid_per = 0.1
