@@ -1,5 +1,9 @@
 from __future__ import print_function, division
 
+import json
+import shutil
+from PIL import Image
+import cv2
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -25,6 +29,7 @@ import numpy as np
 # Writer will output to ./runs/ directory by default
 # writer = SummaryWriter('./log')
 
+TMP_FILE = './tmp/tmp.jpg'
 seed = 60
 
 torch.manual_seed(seed)            # 为CPU设置随机种子
@@ -165,11 +170,6 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
 
 def test_model(model, criterion):
     since = time.time()
-
-    best_model_wts = model.state_dict()
-    best_acc = 0.0
-
-
     model.eval()  # Set model to evaluate mode
 
     running_loss = 0.0
@@ -205,9 +205,46 @@ def test_model(model, criterion):
     time_elapsed = time.time() - since
     print('Testing complete in ',time_elapsed)
 
-    # load best model weights
-    model.load_state_dict(best_model_wts)
-    return model
+    return None
+
+def predict(model, criterion, path):
+    since = time.time()
+    model.eval()  # Set model to evaluate mode
+
+    trans = transforms.Compose([
+        transforms.Resize((224,224)),
+        # transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize([0.60297036, 0.5137168, 0.50260335],[0.24658357, 0.24121241, 0.24273053])
+        # transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    ])
+    predict_dic = {}
+
+    for root, dirs, files in os.walk(path):
+        if len(files) == 0:
+            continue
+
+        folder_key = os.path.split(root)[-1]
+        predict_dic[folder_key] = {}
+    # wrap your data and label into Tensor
+        for file_name in files:
+            file_path = root+'/'+file_name
+
+            img = Image.open(file_path)
+            img = trans(img)
+            img = img.unsqueeze(0)
+
+            if use_gpu:
+                input = Variable(img.cuda())
+            else:
+                input = Variable(img)
+
+            # forward
+            output = model(input)
+            _, pred = torch.max(output.data, 1)
+            predict_dic[folder_key][file_name] = pred[0].item()
+    return predict_dic
+
 if __name__ == '__main__':
 
     # data_transform, pay attention that the input of Normalize() is Tensor and the input of RandomResizedCrop() or RandomHorizontalFlip() is PIL Image
@@ -272,3 +309,9 @@ if __name__ == '__main__':
     elif sys.argv[1] == 'test':
         model_ft.load_state_dict(torch.load('params_v1.0.pth'))
         test_model(model=model_ft,criterion=criterion)
+    elif sys.argv[1] == 'predict':
+        model_ft.load_state_dict(torch.load('params_v1.0.pth'))
+        predict_dic = predict(model=model_ft,criterion=criterion,path=sys.argv[2])
+        print(predict_dic)
+        with open('eye_predict_dic','w') as output_file:
+            json.dump(predict_dic, output_file)
