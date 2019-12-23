@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
 from torch.autograd import Variable
+import torch.nn.functional as F
 import torchvision
 from torchvision import datasets, models, transforms
 import time
@@ -17,7 +18,8 @@ import sys
 import matplotlib.pyplot as plt
 import random
 import numpy as np
-#整体归一化
+
+# 整体归一化
 # normMean = [0.57458663, 0.5311794, 0.53112286]
 # normStd = [0.28226474, 0.27916232, 0.278306]
 # transforms.Normalize(normMean = [0.57458663, 0.5311794, 0.53112286], normStd = [0.28226474, 0.27916232, 0.278306])
@@ -32,11 +34,13 @@ import numpy as np
 TMP_FILE = './tmp/tmp.jpg'
 seed = 60
 
-torch.manual_seed(seed)            # 为CPU设置随机种子
-torch.cuda.manual_seed(seed)       # 为当前GPU设置随机种子
-torch.cuda.manual_seed_all(seed)   # 为所有GPU设置随机种子
+torch.manual_seed(seed)  # 为CPU设置随机种子
+torch.cuda.manual_seed(seed)  # 为当前GPU设置随机种子
+torch.cuda.manual_seed_all(seed)  # 为所有GPU设置随机种子
 random.seed(seed)
 np.random.seed(seed)
+
+
 def train_model(model, criterion, optimizer, scheduler, num_epochs):
     since = time.time()
 
@@ -109,7 +113,6 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
                 test_loss_list.append(epoch_loss)
         scheduler.step()
 
-
     time_elapsed = time.time() - since
     print('Training complete in {:.0f}m {:.0f}s'.format(
         time_elapsed // 60, time_elapsed % 60))
@@ -122,8 +125,8 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
     l1, = plt.plot(x1, train_acc_list,
                    label='train',
                    color='blue',
-                    linewidth = 1.0,  # 线条宽度
-                    linestyle = '-.' # 线条样式
+                   linewidth=1.0,  # 线条宽度
+                   linestyle='-.'  # 线条样式
                    )
     l2, = plt.plot(x1, test_acc_list,
                    color='red',  # 线条颜色
@@ -144,8 +147,8 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
     l1, = plt.plot(x1, train_loss_list,
                    label='train',
                    color='blue',
-                    linewidth = 1.0,  # 线条宽度
-                    linestyle = '-.'  # 线条样式
+                   linewidth=1.0,  # 线条宽度
+                   linestyle='-.'  # 线条样式
                    )
     l2, = plt.plot(x1, test_loss_list,
                    color='red',  # 线条颜色
@@ -167,6 +170,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
     # load best model weights
     model.load_state_dict(best_model_wts)
     return model
+
 
 def test_model(model, criterion):
     since = time.time()
@@ -203,19 +207,20 @@ def test_model(model, criterion):
         'test', epoch_loss, epoch_acc))
 
     time_elapsed = time.time() - since
-    print('Testing complete in ',time_elapsed)
+    print('Testing complete in ', time_elapsed)
 
     return None
+
 
 def predict(model, criterion, path):
     since = time.time()
     model.eval()  # Set model to evaluate mode
 
     trans = transforms.Compose([
-        transforms.Resize((224,224)),
+        transforms.Resize((224, 224)),
         # transforms.CenterCrop(224),
         transforms.ToTensor(),
-        transforms.Normalize([0.60297036, 0.5137168, 0.50260335],[0.24658357, 0.24121241, 0.24273053])
+        transforms.Normalize([0.60297036, 0.5137168, 0.50260335], [0.24658357, 0.24121241, 0.24273053])
         # transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
     predict_dic = {}
@@ -226,10 +231,10 @@ def predict(model, criterion, path):
 
         folder_key = os.path.split(root)[-1]
         predict_dic[folder_key] = {}
-    # wrap your data and label into Tensor
+        # wrap your data and label into Tensor
         for file_name in files:
-            file_path = root+'/'+file_name
-
+            file_path = root + '/' + file_name
+            print(file_path)
             img = Image.open(file_path)
             img = trans(img)
             img = img.unsqueeze(0)
@@ -241,36 +246,43 @@ def predict(model, criterion, path):
 
             # forward
             output = model(input)
+            score = F.softmax(output)
+
             _, pred = torch.max(output.data, 1)
-            predict_dic[folder_key][file_name] = pred[0].item()
+            # print(score[0][0].item(), score[0][1].item(), pred[0].item())
+            predict_dic[folder_key][file_name] = [pred[0].item(), score[0][pred[0].item()].item()]
+
     return predict_dic
+
 
 if __name__ == '__main__':
 
     # data_transform, pay attention that the input of Normalize() is Tensor and the input of RandomResizedCrop() or RandomHorizontalFlip() is PIL Image
     data_transforms = {
         'train': transforms.Compose([
-            transforms.Resize((224,224)),
+            transforms.Resize((224, 224)),
             # transforms.RandomResizedCrop(224),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            transforms.Normalize([0.60297036, 0.5137168, 0.50260335],[0.24658357, 0.24121241, 0.24273053])
-            #imgnet归一化
+            transforms.Normalize([0.60297036, 0.5137168, 0.50260335], [0.24658357, 0.24121241, 0.24273053])
+            # imgnet归一化
             # transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ]),
         'test': transforms.Compose([
-            transforms.Resize((224,224)),
+            transforms.Resize((224, 224)),
             # transforms.CenterCrop(224),
             transforms.ToTensor(),
-            transforms.Normalize([0.60297036, 0.5137168, 0.50260335],[0.24658357, 0.24121241, 0.24273053])
+            transforms.Normalize([0.60297036, 0.5137168, 0.50260335], [0.24658357, 0.24121241, 0.24273053])
             # transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         ]),
     }
 
     # your image data file
-    data_dir = './eye_segmentation_dataset'
+    data_dir = '~/intership/huawei_aesthetic_frames/eye_segmentation_dataset'
     image_datasets = {x: datasets.ImageFolder(os.path.join(data_dir, x),
                                               data_transforms[x]) for x in ['train', 'test']}
+    print(image_datasets['train'].class_to_idx)
+    print(image_datasets['test'].class_to_idx)
     # wrap your data and label into Tensor
     dataloders = {x: torch.utils.data.DataLoader(image_datasets[x],
                                                  batch_size=4,
@@ -308,10 +320,9 @@ if __name__ == '__main__':
         torch.save(model_ft.state_dict(), './params.pth')
     elif sys.argv[1] == 'test':
         model_ft.load_state_dict(torch.load('params_v1.0.pth'))
-        test_model(model=model_ft,criterion=criterion)
+        test_model(model=model_ft, criterion=criterion)
     elif sys.argv[1] == 'predict':
         model_ft.load_state_dict(torch.load('params_v1.0.pth'))
-        predict_dic = predict(model=model_ft,criterion=criterion,path=sys.argv[2])
-        print(predict_dic)
-        with open('eye_predict_dic','w') as output_file:
+        predict_dic = predict(model=model_ft, criterion=criterion, path=sys.argv[2])
+        with open('eye_predict_dic_with_prob','w') as output_file:
             json.dump(predict_dic, output_file)

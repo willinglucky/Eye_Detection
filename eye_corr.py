@@ -73,9 +73,6 @@ def get_info(dir_path):
             info_dic[key] = {}
             break
     pair_wise_info_dic = info_dic[key]
-    if key == order_list[len(order_list) - 1] and len(pair_wise_info_dic) != 0 and (
-            len(pair_wise_info_dic[Pair_Order_Key]) == (len(pair_wise_info_dic) - 1)):
-        return False, 'Work finished', ret_list
 
     ret_list.append(order_list)
     ret_list.append(info_dic)
@@ -91,20 +88,52 @@ def get_info(dir_path):
     return True, "Initialize successfully.", ret_list
 
 
-def eye_type(left_image_name, right_image_name, left_image_label, right_image_label, eye_info_sub_dic):
-    if eye_info_sub_dic[left_image_name] == left_image_label and eye_info_sub_dic[right_image_name] == left_image_label:
-        return None
-    elif eye_info_sub_dic[left_image_name] == right_image_label and eye_info_sub_dic[
-        right_image_name] == right_image_label:
-        return None
-    elif eye_info_sub_dic[left_image_name] == left_image_label and eye_info_sub_dic[
-        right_image_name] == right_image_label:
-        return 1
-    elif eye_info_sub_dic[left_image_name] == right_image_label and eye_info_sub_dic[
-        right_image_name] == left_image_label:
-        return -1
+def eye_type(left_image_name, right_image_name, left_image_label, right_image_label, eye_info_sub_dic, equal, prob):
+    beta = 0.2
+    if equal == True:
+        ret_equal = 0
     else:
-        return None
+        ret_equal = None
+    if prob == False:
+        if eye_info_sub_dic[left_image_name][0] == left_image_label and eye_info_sub_dic[right_image_name][
+            0] == left_image_label:
+            return ret_equal
+        elif eye_info_sub_dic[left_image_name][0] == right_image_label and eye_info_sub_dic[
+            right_image_name][0] == right_image_label:
+            return ret_equal
+        elif eye_info_sub_dic[left_image_name][0] == left_image_label and eye_info_sub_dic[
+            right_image_name][0] == right_image_label:
+            return 1
+        elif eye_info_sub_dic[left_image_name][0] == right_image_label and eye_info_sub_dic[
+            right_image_name][0] == left_image_label:
+            return -1
+        else:
+            return None
+    else:
+        if eye_info_sub_dic[left_image_name][0] == left_image_label and eye_info_sub_dic[right_image_name][
+            0] == left_image_label:
+            if eye_info_sub_dic[left_image_name][1] - eye_info_sub_dic[right_image_name][1] >= beta:
+                return 1
+            elif eye_info_sub_dic[right_image_name][1] - eye_info_sub_dic[left_image_name][1] > beta:
+                return -1
+            else:
+                return ret_equal
+        elif eye_info_sub_dic[left_image_name][0] == right_image_label and eye_info_sub_dic[
+            right_image_name][0] == right_image_label:
+            if eye_info_sub_dic[left_image_name][1] - eye_info_sub_dic[right_image_name][1] >= beta:
+                return -1
+            elif eye_info_sub_dic[right_image_name][1] - eye_info_sub_dic[left_image_name][1] > beta:
+                return 1
+            else:
+                return ret_equal
+        elif eye_info_sub_dic[left_image_name][0] == left_image_label and eye_info_sub_dic[
+            right_image_name][0] == right_image_label:
+            return 1
+        elif eye_info_sub_dic[left_image_name][0] == right_image_label and eye_info_sub_dic[
+            right_image_name][0] == left_image_label:
+            return -1
+        else:
+            return None
 
 
 def eye_info_preprocess(eye_info_dic, info_dict):
@@ -116,14 +145,14 @@ def eye_info_preprocess(eye_info_dic, info_dict):
             continue
         for image_pair in info_dict[key][Pair_Order_Key]:
             if image_pair[0] not in eye_info_dic[eye_key].keys():
-                eye_info_dic[eye_key][image_pair[0]] = -1
+                eye_info_dic[eye_key][image_pair[0]] = [-1, 1]
             if image_pair[1] not in eye_info_dic[eye_key].keys():
-                eye_info_dic[eye_key][image_pair[1]] = -1
+                eye_info_dic[eye_key][image_pair[1]] = [-1, 1]
 
     return eye_info_dic
 
 
-def get_corr_dict(info_dict, eye_info_dic):
+def get_corr_dict(info_dict, eye_info_dic, equal, prob):
     dict_head = {'整图美感评价': [], '姿态美感': [], '面部美感': []}
     label_dic = {'open': 1, 'close': 0, 'none': -1}
     key_list = ['open', 'close', 'none']
@@ -146,7 +175,7 @@ def get_corr_dict(info_dict, eye_info_dic):
                     eye_key = key.replace('-repeat', '')
                     eye_info_sub_dic = eye_info_dic[eye_key]
                     ret_type = eye_type(left_image_name, right_image_name, left_image_label, right_image_label,
-                                        eye_info_sub_dic)
+                                        eye_info_sub_dic, equal, prob)
                     if ret_type == None:
                         continue
 
@@ -171,27 +200,31 @@ def get_corr_dict(info_dict, eye_info_dic):
 
 
 def main():
-    file_list = ['C:\\Users\\19938\\PycharmProjects\\label_GUI\\标注结果\\数据标注前20组20191203\\张亮20',
-                 'C:\\Users\\19938\\PycharmProjects\\label_GUI\\标注结果\\数据标注前20组20191203\\许松20',
-                 'C:\\Users\\19938\\PycharmProjects\\label_GUI\\标注结果\\数据标注前20组20191203\\肖力玮20',
-                 'C:\\Users\\19938\\PycharmProjects\\label_GUI\\标注结果\\数据标注前20组20191203\\王剑峰20',
-                 'C:\\Users\\19938\\PycharmProjects\\label_GUI\\标注结果\\数据标注前20组20191203\\柯飞龙20']
+    file_list = [r'C:\Users\19938\Documents\intership\burst_dataset\数据标注已完成100组\柯飞龙100',
+                 r'C:\Users\19938\Documents\intership\burst_dataset\数据标注已完成100组\王剑峰100',
+                 r'C:\Users\19938\Documents\intership\burst_dataset\数据标注已完成100组\肖力玮100',
+                 r'C:\Users\19938\Documents\intership\burst_dataset\数据标注已完成100组\许松100',
+                 r'C:\Users\19938\Documents\intership\burst_dataset\数据标注已完成100组\张亮100']
 
-    eye_info_dic = eye_info(r'C:\Users\19938\PycharmProjects\Eye_Detection\eye_predict_dic')
+    eye_info_dic = eye_info(r'C:\Users\19938\PycharmProjects\Eye_Detection\eye_predict_dic_with_prob')
     for file_path in file_list:
         ret, ret_str, ret_list = get_info(file_path)
+        print(ret_str)
         eye_info_dic = eye_info_preprocess(eye_info_dic, ret_list[1])
 
+    print(eye_info_dic)
     df_list = []
     # argv = 'consistency'
     argv = 'corr'
+    equal_val = False
+    prob_val = True
     if argv == 'corr':
         df_dic = {}
         index = 0
         key_list = []
         for file_path in file_list:
             ret, ret_str, ret_list = get_info(file_path)
-            corr_dic = get_corr_dict(ret_list[1], eye_info_dic)
+            corr_dic = get_corr_dict(ret_list[1], eye_info_dic, equal=equal_val, prob=prob_val)
             for val in corr_dic:
                 for key in val.keys():
                     save_path = './data_analyse/' + file_path[file_path.rfind('\\') + 1:] + '-' + key + '.csv'
@@ -201,11 +234,12 @@ def main():
                     df = pd.DataFrame(data=val[key])
                     df_dic[key].append(df)
                     df.corr().to_csv(save_path, encoding='utf_8_sig')
-                    print(file_path[file_path.rfind('\\') + 1:]+':'+key+'\t'+str(len(val[key]['整图美感评价'])))
+                    print(file_path[file_path.rfind('\\') + 1:] + ':' + key + '\t' + str(len(val[key]['整图美感评价'])))
         for key, df_list in df_dic.items():
             save_path = './data_analyse/' + 'hol_corr' + '-' + key + '.csv'
             hol_df = pd.concat(df_list)
             hol_df.corr().to_csv(save_path, encoding='utf_8_sig')
+            print(key + ':', hol_df.shape[0])
 
 
 if __name__ == '__main__':
